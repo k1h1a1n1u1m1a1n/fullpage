@@ -1,29 +1,60 @@
-class Options {
+class Responsive {
+    checkSection = (section, deltaY) => {
+        if (section.clientHeight > window.innerHeight) {
+            let bodyRect = document.body.getBoundingClientRect();
+            let sectionRect = section.getBoundingClientRect();
+            let windowY = window.pageYOffset;
+            let sectionNotInTheBottom = (Math.floor(sectionRect.bottom - bodyRect.top - window.innerHeight) !== windowY) || deltaY < 0;
+            let sectionNotInTheTop = (Math.floor(sectionRect.top - bodyRect.top) !== windowY) || deltaY > 0;
 
-    initOptionsSlider = slider => {
-        let arr = [];
-        for (let i = 0; i < slider.length; i++) {
-            arr.push(document.querySelector(slider[i]));
-        }
-        return arr
-    };
+            if (sectionNotInTheBottom && sectionNotInTheTop) {
+                let targetPos = deltaY < 0 ? sectionRect.top : sectionRect.bottom - window.innerHeight;
 
-    initOptions = options => {
-        console.log(options)
-        let globalOptions = null;
-        if (options) {
-            globalOptions = {};
-            if (options.slider) {
-                globalOptions = this.initOptionsSlider(options.slider)
+
+                if (sectionRect.top - window.innerHeight < sectionRect.bottom && deltaY > 0) {
+
+                    console.log(sectionRect.bottom)
+                    return false;
+
+                    let offset = windowY + window.innerHeight;
+                    window.scrollTo({top: offset, behavior: 'smooth'});
+                    return false
+
+                } else if (sectionRect.bottom + window.innerHeight > sectionRect.top && deltaY < 0) {
+
+                    let offset = windowY - window.innerHeight;
+                    if (sectionRect.top + window.innerHeight > 0 && sectionRect.top + window.innerHeight < window.innerHeight) {
+                        let offset = targetPos - bodyRect.top;
+                        window.scrollTo({top: offset, behavior: 'smooth'});
+                        return false
+                    }
+
+                    window.scrollTo({top: offset, behavior: 'smooth'});
+                    return false
+
+                } else {
+
+                    let offset = targetPos - bodyRect.top;
+                    window.scrollTo({top: offset, behavior: 'smooth'});
+                    return false
+
+                }
             }
+
+            return true
+
         }
-        return globalOptions
+
+        return true
     }
+
+
 }
 
-class Sliders {
-    getSlidesInSection = (sections, i): Array<object> => {
-        let slides = sections[i].querySelectorAll('.slick-slide');
+class SliderFunctions {
+
+    getSlidesFromSection = (section) => {
+        let slides = section.querySelectorAll('.slick-slide');
         let arr = [];
         for (let i = 0; i < slides.length; i++) {
             if (!slides[i].classList.contains('slick-cloned'))
@@ -31,19 +62,36 @@ class Sliders {
         }
         return arr;
     };
-}
 
-function applyMixins(derivedCtor: any, baseCtors: any[]) {
-    baseCtors.forEach(baseCtor => {
-        Object.getOwnPropertyNames(baseCtor.prototype).forEach(name => {
-            if (name !== 'constructor') {
-                derivedCtor.prototype[name] = baseCtor.prototype[name];
+    wheelSlider = (i, sections, sliders, deltaY, scroll) => {
+        let current_slider: any;
+        for (let j = 0; j < sliders.length; j++) {
+            if (sliders[j].section_index === i) {
+                current_slider = sliders[j];
             }
-        });
-    });
+        }
+        let active_slide = parseInt(sections[i].querySelector('.slick-current').dataset.slickIndex);
+        let currentSectionSlider: any;
+        currentSectionSlider = $(sections[i].querySelector('.scroll-slider'));
+
+        if (deltaY > 0) {
+            if (active_slide < current_slider.count) {
+                currentSectionSlider.slick('slickNext')
+            } else {
+                scroll(sections[i + 1], sections[i], deltaY)
+            }
+        } else {
+            if (active_slide > 0) {
+                currentSectionSlider.slick('slickPrev')
+            } else {
+                scroll(sections[i - 1], sections[i], deltaY)
+            }
+        }
+    }
 }
 
-class Fullpage implements Options, Sliders {
+
+class Fullpage {
     /**
      *Nodes:
      */
@@ -61,25 +109,18 @@ class Fullpage implements Options, Sliders {
     /**
      *Sliders settings:
      */
-    sliders: any;
+    sliders = [];
 
     /**
-     *Option
+     * Friend classes:
      */
-    options: any;
-    initOptionsSlider: any;
-    getSlidesInSection: any;
+    SliderFunctions = new SliderFunctions();
+    Responsive = new Responsive();
 
     /**
      * Main constructor:
      */
-    constructor(public selector: string, options = null) {
-        /**
-         * Init Options class
-         */
-        applyMixins(Fullpage, [Options, Sliders]);
-
-
+    constructor(public selector: string) {
         this.root = document.querySelector(this.selector);
         this.sections = this.root.querySelectorAll('.section-scroll');
         this.count_sections = this.sections.length - 1;
@@ -87,32 +128,32 @@ class Fullpage implements Options, Sliders {
         this.lastAnimation = 0;
         this.idlePeriod = 100;
 
-
-        //Init sliders options
-        // console.log(Fullpage.prototype.initOptions(options));
-
         window.addEventListener('load', this.setEventListeners)
     }
-
-    initOptions: (options) => any
 
 
     /**
      * Function scroll. Takes section to which need make scroll:
      */
-    scroll = element => {
-        let targetPos = element.getBoundingClientRect().top;
+    scroll = (element, fromSection, deltaY) => {
+        let targetPos = deltaY > 0 ? element.getBoundingClientRect().top : element.getBoundingClientRect().bottom - window.innerHeight;
         let startPos = document.body.getBoundingClientRect().top;
         let offset = targetPos - startPos;
-        window.scrollTo({top: offset, behavior: 'smooth'})
+        if (this.Responsive.checkSection(fromSection, deltaY))
+            window.scrollTo({top: offset, behavior: 'smooth'})
+    };
+
+    smallScroll = () => {
+        window.scrollTo({top: 50, behavior: 'smooth'})
     };
 
     /**
      * Function set event wheel for each section. And check does it contain slider:
      */
     setEventListeners = () => {
+        this.sliders = [];
         for (let i = 0; i < this.count_sections + 1; i++) {
-            let hasSlider = this.sections[i].classList.contains("has-slider");
+            let hasSlider = this.sections[i].querySelector(".scroll-slider");
             this.sections[i].addEventListener('mousewheel', e => this.wheelEvent(e, i, hasSlider));
             hasSlider ? this.setSlidersSettings(i) : 0
         }
@@ -122,59 +163,31 @@ class Fullpage implements Options, Sliders {
      * Function set slider settings which will be needed when scrolling the slider:
      */
     setSlidersSettings = i => {
-        this.sliders = [];
-        let slides = this.getSlides(i);
+        let slides = this.SliderFunctions.getSlidesFromSection(this.sections[i]);
         this.sliders.push({section_index: i, slides: slides, count: slides.length - 1});
-    };
-
-    getSlides = i => {
-        let slides = this.sections[i].querySelectorAll('.slick-slide');
-        let arr = [];
-        for (let i = 0; i < slides.length; i++) {
-            if (!slides[i].classList.contains('slick-cloned'))
-                arr.push(slides[i])
-        }
-        return arr;
     };
 
     wheelEvent = (e, i, hasSlider) => {
         e.preventDefault();
         if (!this.checkCountEvents()) return;
-        if (hasSlider) return this.sliderSlide(e.deltaY, i);
+        if (hasSlider) return this.wheelSlider(e.deltaY, i);
+
         if (e.deltaY > 0) {
-            if (i + 1 <= this.count_sections) this.scroll(this.sections[i + 1]);
+            if (i + 1 <= this.count_sections) {
+                this.scroll(this.sections[i + 1], this.sections[i], e.deltaY);
+            } else if (this.sections[i].clientHeight > window.innerHeight) {
+                this.scroll(this.sections[i], this.sections[i], e.deltaY);
+            }
         } else {
-            if (i - 1 >= 0) this.scroll(this.sections[i - 1]);
+            if (i - 1 >= 0) this.scroll(this.sections[i - 1], this.sections[i], e.deltaY);
         }
+
         this.lastAnimation = new Date().getTime();
     };
 
-    sliderSlide = (deltaY, i) => {
+    wheelSlider = (deltaY, i) => {
         if (!this.checkCountEvents()) return;
-
-        let current_slider: any;
-        for (let j = 0; j < this.sliders.length; j++) {
-            if (this.sliders[j].section_index === i) {
-                current_slider = this.sliders[j];
-            }
-        }
-        let active_slide = parseInt($('.slick-current').attr("data-slick-index"));
-
-        let y: any;
-        y = $('.slick-slider');
-        if (deltaY > 0) {
-            if (active_slide < current_slider.count) {
-                y.slick('slickNext')
-            } else {
-                this.scroll(this.sections[i + 1])
-            }
-        } else {
-            if (active_slide > 0) {
-                y.slick('slickPrev')
-            } else {
-                this.scroll(this.sections[i - 1])
-            }
-        }
+        this.SliderFunctions.wheelSlider(i, this.sections, this.sliders, deltaY, this.scroll);
         this.lastAnimation = new Date().getTime();
 
     };
@@ -189,6 +202,4 @@ class Fullpage implements Options, Sliders {
 }
 
 
-new Fullpage('.root', {
-    slider: ['.slick-slider']
-});
+new Fullpage('.root');
